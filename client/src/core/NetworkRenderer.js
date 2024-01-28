@@ -29,20 +29,19 @@ import HealthSvg from '../images/icons/Public health & wellbeing.svg';
 // mDPSEEA (Morris et al., 2006)
 // Driver, Pressure, State, Exposure, Effect, Action
 
-import { Network } from './Network';
+import { CorrelationNetwork } from './CorrelationNetwork';
 import { NetworkParser } from './NetworkParser';
 import { formatTextWrap } from '../utils/utils';
+import { loadImage, placeholderIcon, imageLoaded, getImage, textIcon } from '../utils/iconLoader';
 
 const node_size=25;
 const preview_font_size=6;
 
-const iconCache = {};
+class NetworkRenderer extends CorrelationNetwork {
 
-class NetworkRenderer extends Network {
-
-	constructor() {
+    constructor() {
         super([],[]);
-		this.iconCacheLoading = false;
+	this.iconCacheLoading = false;
         this.nodeColour = {
             "Driver": "#204545",
             "Pressure": "#204545",
@@ -57,57 +56,11 @@ class NetworkRenderer extends Network {
             "Wind speed": 300,
             "Cloud cover": 450
         };      
-	}
-
-    // preload some icons
-    loadIcons() {
-        this.loadImage("glow");
-        this.loadImage("increase");
-        this.loadImage("decrease");
-        this.loadImage("uncertain");
     }
 
-    notFoundIcon(col,text) {
-        return `
-<svg width="300" height="600">
-<circle
-             style="fill:`+col+`;fill-opacity:1;stroke-width:0.46499997"
-             id="circle1093-0-8"
-             cx="150"
-             cy="400"
-             r="100" />
- <text x="50%" y="66%" text-anchor="middle" fill="white" font-size="40px" 
-font-family="Arial" dy=".3em">`+text+`</text>
-
-</svg>
-`;
+    printable(str) {
+	return str.replace("&","&amp;");
     }
-    
-    async loadImage(fn,thunk) {
-        if (iconCache[fn]!=undefined) {            
-            return iconCache[fn];
-        }
-        
-        let prepend="";
-        if (process.env.NODE_ENV==="development") {
-            prepend="http://localhost:3000";
-        }
-
-        let response = await fetch(prepend+"/images/"+fn+".svg");
-        
-        if (!response.ok) {
-            console.log(`An error has occured loading ${fn}: ${response.status}`);
-            return this.notFoundIcon("#f00","ERROR");
-        }
-        
-        let data = await response.text();
-        iconCache[fn]=data;
-        return iconCache[fn];
-    }
-
-	printable(str) {
-		return str.replace("&","&amp;");
-	}
 
     capLength(str) {
         if (str.length>49) {
@@ -115,19 +68,23 @@ font-family="Arial" dy=".3em">`+text+`</text>
         }
         return str;
     }
-    
-	async nodeImageURL(node,glow,transparent) {
+
+    // this function needs tidying up - image management could
+    // be better dealt with, but at least currently works with
+    // async loading for slow connections etc.
+    async nodeImageURL(node,glow,transparent,image) {
         // icons are 117x117 pixels
         let icon_height=117;        
         let image_height = 300;
         let icon_pos = (image_height-icon_height)/2;        
         
-        let draw = SVG()
-            .size(137, 300);
+        let draw = SVG().size(137, 300);
 
         if (transparent) {
             draw.attr('filter','grayscale(1.0) contrast(0.25) brightness(2)');
         }
+
+        console.log("drawing...");
         
         // draw the text as a foreign object so we don't need to line wrap etc
         let fobj = draw.foreignObject(117,300).move(10,220);
@@ -144,129 +101,141 @@ font-family="Arial" dy=".3em">`+text+`</text>
 
         // glow
         if (glow) {
-            draw.group().svg(await this.loadImage("glow")).move(-3,icon_pos-10);
+            draw.group().svg(await loadImage("glow")).move(-3,icon_pos-10);
+        }
+
+        if (false && this.votesMixed(node.votes)) {
+            let hist = this.votes2Hist(node.votes);
+            let str = hist["increase"]+":"+hist["decrease"]+":"+hist["uncertain"];            
+            draw.group().svg(textIcon("#f177f1",str)).move(10,icon_pos);
+        } else {           
+            // draw the icon
+            draw.group().svg(image).move(10,icon_pos);
         }
         
-        // draw the icon
-        draw.group().svg(await this.loadImage("icons/"+node.label))
-            .move(10,icon_pos);
-
-        if (node.state.value!="deactivated" && node.state.value!="unknown") {
+        // no unknown any more...
+        if (node.state!="uncalculated" && node.state!="unknown") {
             // draw the direction
-            draw.group().svg(await this.loadImage(node.state.value)).move(54,60);
+            draw.group().svg(await loadImage(node.state)).move(54,60);
         }
 
-		return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(draw.svg());
-	}
+	return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(draw.svg());
+    }
 
-	getRnd(min, max) {
-		return (Math.random() * (max - min) ) + min;
-	}
-	
-///////////////////////////////////////
+    getRnd(min, max) {
+	return (Math.random() * (max - min) ) + min;
+    }
     
-	async addNode(node) {
-        if (node.state=="disabled") {
-            return;
-        }
+    ///////////////////////////////////////
 
+    async addNode(node,image_callback) {
+        // start with a placeholder version
+        let image = placeholderIcon(this.nodeColour[node.type]);
+        let imageFilename = "icons/"+node.label;
+        
+        // is it in the cache already?
+        if (imageLoaded(imageFilename)) {
+            // use it directly
+            image = getImage(imageFilename);
+        } else {
+            // start loading and call callback when it's here
+            loadImage(imageFilename).then((image) => {
+                image_callback(node,image);
+            });
+        }
         
         if (node.type=="Pressure") {
-        	this.nodes.push({
-			    id: node.node_id,
-			    shape: "image",
-			    image: await this.nodeImageURL(node,false,false),
-			    size: 30,
-				x: -500,
-				y: this.nodePositions[node.label],
-				fixed: true,
+            this.nodes.push({
+		id: node.node_id,
+		shape: "image",
+		image: await this.nodeImageURL(node,false,false,image),
+		size: 30,
+		x: -500,
+		y: this.nodePositions[node.label],
+		fixed: true,
                 mDPSEEA: node.type,
                 sector: node.sector
-		    });
-
-            return;
+	    });
+        } else {        
+            this.nodes.push({
+		id: node.node_id,
+		shape: "image",
+		image: await this.nodeImageURL(node,false,false,image),
+		size: 30,
+                mDPSEEA: node.type,
+                sector: node.sector
+	    });
         }
-        
-        this.nodes.push({
-			id: node.node_id,
-			shape: "image",
-			image: await this.nodeImageURL(node,false,false),
-			size: 30,
-            mDPSEEA: node.type,
-            sector: node.sector
-		});
+    }
 
-        return;
-	}
-
-	addEdge(edge) {
-
+    addEdge(edge) {
         let colour = "#115158" ;
         let highlightColour = "#f5821f";
         //if (edge.state=="increase") colour="#afd6e4";
         //if (edge.state=="decrease") colour="#f1b9bd";
-        //if (edge.state=="uncertain") colour="#ff00ff";
+        //if (edge.state=="uncertain") colour="#d6d6d6";
         
         let label=edge.type;
-        var labelsize = 10;
+        var labelsize = 15;
 
+        let dir="^";
+        if (edge.state=="decrease") dir="v";
+        if (edge.state=="uncertain") dir="?";
+        
         this.edges.push({
-			id: edge.edge_id,
-			from: edge.node_from,
-			to: edge.node_to,
-			arrows: "none",
+	    id: edge.edge_id,
+	    from: edge.node_from,
+	    to: edge.node_to,
+	    arrows: "",
             width: 3,
-            //label: edge.state+" ("+label+")",
-			//labelHighlightBold: false,
-			//arrowStrikethrough: false,
+            //label: dir+" ("+edge.type+")",
+	    //labelHighlightBold: false,
+	    //arrowStrikethrough: false,
             smooth: {
                 type: "dynamic",
                 enabled: true,
                 roundness: 0.5,
             },
-			font: {
-				color: colour,
-				size: labelsize,
-				//vadjust: 10,
-				//align: "bottom"
-			},
-			color: {
-				color: colour,
-				highlight: highlightColour,
-			},
+	    font: {
+		color: colour,
+		size: labelsize,
+		//vadjust: 10,
+		//align: "bottom"
+	    },
+	    color: {
+		color: colour,
+		highlight: highlightColour,
+	    },
             endPointOffset: { to: 1.2 }
-		});
-	}
+	});
+    }
     
-	buildGraph(networkParser, nodes, edges, sector) {               
+    buildGraph(networkParser, sector, image_callback) {               
         this.nodes = [];
-		this.edges = [];
+	this.edges = [];
 
         // do we want a straight copy of the edges, or apply
         // same filtering as below?
-		for (let edge of networkParser.edges) {
-   			this.addEdge(edge);
-		}
-
+	for (let edge of networkParser.edges) {
+   	    this.addEdge(edge);
+	}
+        
         // find causes and propagate upwards (right?) from there
-		for (let node of networkParser.nodes) {
+	for (let node of networkParser.nodes) {            
             if (["Pressure", "Effect", "State", "Exposure"].includes(node.type) &&
-                node.state.value!="deactivated") {
+                node.state!="uncalculated" && node.state!="disabled") {
                 if (sector!="All" && !node.sector.includes(sector)) {
                     node.transparent=true;
                 }
-   			    this.addNode(node);
+   		this.addNode(node,image_callback);
             }
-		}
+	}
 
-        let g = {
+        return {
             nodes: this.nodes,
             edges: this.edges
         };
-
-        return g;
-		
-	}
+    }
 }
 
 export { NetworkRenderer }

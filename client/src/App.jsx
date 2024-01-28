@@ -21,10 +21,13 @@ import ClimatePredictionLoader from './components/ClimatePredictionLoader';
 import Graph from "./components/Graph";
 import HealthWellbeing from './components/HealthWellbeing';
 import Network from "./components/Network";
+import NetworkNamesLoader from './components/NetworkNamesLoader';
 import NetworkLoader from './components/NetworkLoader';
 import { NetworkParser } from './core/NetworkParser';
 import Vulnerabilities from './components/Vulnerabilities';
 import Adaptations from './components/Adaptations';
+import { loadIcons } from './utils/iconLoader';
+import Hazards from "./components/Hazards";
 
 import { ReactComponent as LCATLogoSvg } from './images/logos/LCAT_Logo_Primary_RGB.svg';
 
@@ -37,20 +40,34 @@ const meta = {
     }
 };
 
+const network_layers = [
+    [""],
+    ["Coastal security Summary","Coastal security In Full"],
+    ["Extreme storms Summary","Extreme storms In Full"],
+    ["Drought summary","Flooding summary","Flooding and drought in full"],
+	["Food and personal security summary","Food and personal security in full"],
+    ["Temperature Summary","Temperature In Full",],
+];
+
 class App extends React.Component {
     constructor(props) {
         super(props);
 
+        // preload some icons
+        loadIcons();
+        
         this.state = {
             regions: [],
             regionType: "counties",
-            network: { nodes: [], edges: [] },
+            networks: ["Heat version 2"],
+            networkID: 3,
             climatePrediction: [],           
             season: "annual",
             rcp: "rcp60",
             year: 2070,
             loadingPrediction: false,          
-            networkParser: new NetworkParser([],[])
+            networkParser: new NetworkParser([],[]),
+            layerName: "All"
         };
     }
 
@@ -65,43 +82,36 @@ class App extends React.Component {
                 </header>
               </div>
               
-              <div className="grey-section">
+              
+		      <div className="grey-section">
 
-                <p>
-                  Use this tool to see what the scientific research is saying about:
-                </p>
-                <ul>
-                  <li>How your local climate will change</li>
-                  <li>The impacts on public health, and which groups are most vulnerable locally</li>
-                  <li>Adaptations most appropriate to your local area</li>
-                </ul>                  
-                <p>
-                  LCAT is evidence based and designed with and for local decision makers.
-                  The tool is a prototype and under continued development, and currently only considers some heat impacts.
-                </p>
+                <p>Use this tool to see how your local climate will change, the impacts on public health, social and environmental vulnerabilities, and the most appropriate adaptations for your area.</p>
+                
+                <p>The tool is a prototype, and only considers some heat impacts. The version you are looking at was developed by Then Try This. The tool continues to be developed by the University of Exeter, so you may find a more recent version at <a href="https://lcat.uk/">https://lcat.uk/</a></p>
                 
                 <p>
-                  <a href="https://www.ecehh.org/wp/wp-content/uploads/2023/01/Frequently-Asked-Questions-1.pdf"  target="_blank">See our Frequently Asked Questions for more information.</a>
+                  <a href="https://web.archive.org/web/20231017162308/https://www.ecehh.org/wp/wp-content/uploads/2023/01/Frequently-Asked-Questions-1.pdf"  target="_blank">See our Frequently Asked Questions for more information.</a>
                 </p>
-              </div>
+		      </div>
               
+              
+              {/*<NetworkNamesLoader                
+                callback={(names) => {
+                    this.setState((state) => ({
+                        networks: names
+                    }));
+                }}
+                />*/}
+                           
               <NetworkLoader
-                id={0}
+                id={this.state.networkID}
+                layerName={this.state.layerName}
                 callback={(nodes, edges) => {
                     this.setState((state) => ({
-                        network: { nodes: nodes, edges: edges },
                         networkParser: new NetworkParser(nodes,edges)
                     }));}}
               />
 
-              {/*<StatsLoader
-                id={0}
-                callback={(stats) => {
-                    this.setState((state) => ({
-                        stats: stats
-                    }));}}
-              />*/}
-              
               <ClimatePredictionLoader
                 regions = {this.state.regions}
                 season = {this.state.season}
@@ -109,15 +119,15 @@ class App extends React.Component {
                 regionType = {this.state.regionType}
                 callback = {(prediction) => {
                       this.setState((state) => ({
-                        climatePrediction: prediction,
+                          climatePrediction: prediction,
                         loadingPrediction: false,                        
                     }));}}
                 loadingCallback={ loading => { this.setState(() => ({
                     loadingPrediction: true
                 }));}}
               />
-
-               <div className="white-section">
+              
+              <div className="white-section">
                 <ClimateMap
                   regionType = {this.state.regionType}
                   regionsCallback={(regions,regionType) => {
@@ -168,32 +178,64 @@ class App extends React.Component {
                   }));}}
                 />
               </div>}
+
+              {this.state.regions.length>0 &&              
+               <div className="white-section">
+                <Hazards
+                  regions = {this.state.regions}
+                  regionType = {this.state.regionType}                
+                />
+               </div>}
+              
+              {this.state.regions.length>0 &&              
+               <div className="grey-section">
+
+                 
+                 {/*
+		         <p>
+                   Choose network:&nbsp;
+                   <select onChange={(e) => {
+                       this.setState({
+                           networkID: e.target.value,
+                           //layerName: network_layers[e.target.value][0],
+                       });}}>
+                     {this.state.networks.map((network) => {
+                         return <option value={network.network_id}>{network.name}</option>;
+                     })}
+                   </select>
+                   &nbsp;& layer:&nbsp;
+                   <select onChange={(e) => this.setState({layerName: e.target.value})}>
+                     {network_layers[this.state.networkID].map((layer) => {
+                         return <option value={layer}>{layer}</option>;
+                     })}
+                   </select>
+                 </p>
+                  */}
+                 
+                 
+                 <HealthWellbeing
+                   networkParser = {this.state.networkParser}
+                   year = {this.state.year}
+                   climatePrediction = {this.state.climatePrediction}
+                   regions = {this.state.regions}
+                   loading = {this.state.loadingPrediction}
+                   season={this.state.season}
+                   rcp={this.state.rcp}
+                 />
+
+                 <Network
+                   networks = {this.state.networks}
+                   year = {this.state.year}
+                   climatePrediction = {this.state.climatePrediction}
+                   regions = {this.state.regions}
+                   networkParser = {this.state.networkParser}
+                   season={this.state.season}
+                   rcp={this.state.rcp}
+                 />
+               </div>}
               
               {this.state.regions.length>0 &&              
               <div className="white-section">
-                <HealthWellbeing
-                  networkParser = {this.state.networkParser}
-                  year = {this.state.year}
-                  climatePrediction = {this.state.climatePrediction}
-                  regions = {this.state.regions}
-                  loading = {this.state.loadingPrediction}
-                  season={this.state.season}
-                  rcp={this.state.rcp}
-                />
-
-                <Network
-                  network = {this.state.network}
-                  year = {this.state.year}
-                  climatePrediction = {this.state.climatePrediction}
-                  regions = {this.state.regions}
-                  networkParser = {this.state.networkParser}
-                  season={this.state.season}
-                  rcp={this.state.rcp}
-                />
-              </div>}
-
-              {this.state.regions.length>0 &&              
-              <div className="grey-section">
                 <Vulnerabilities
                   regions = {this.state.regions}
                   regionType = {this.state.regionType}                
@@ -201,10 +243,10 @@ class App extends React.Component {
               </div>}
               
               {this.state.regions.length>0 &&              
-               <div className="white-section">
-                <Adaptations
-                  networkParser = {this.state.networkParser}
-                  year = {this.state.year}
+               <div className="grey-section">
+                 <Adaptations
+                   networkParser = {this.state.networkParser}
+                   year = {this.state.year}
                   climatePrediction = {this.state.climatePrediction}
                   season = {this.state.season}
                   rcp={this.state.rcp}
@@ -212,15 +254,20 @@ class App extends React.Component {
                   loading = {this.state.loadingPrediction}
                 />
                </div>}
-
-              <div className="footer">
+              
+              <div className="footer white-section">
 
                 <p>
                   The Local Climate Adaptation Tool has been developed by
                   the <a href="https://www.ecehh.org/" target="_blank">University of Exeter’s European Centre for Human Health</a>, <a href="https://www.cornwall.gov.uk/" target="_blank">Cornwall Council</a>, <a href="https://thentrythis.org" target="_blank">Then Try This</a> and <a href="https://www.turing.ac.uk/" target="_blank">The Alan Turing Institute</a> with
                   co-design partners from Local Government, the National
                   Health Service, emergency services, and voluntary and private
-                  sectors. Funding for the project has been provided by Research
+                  sectors. This project has been co-funded through the BlueAdapt project.
+                  BlueAdapt has received funding from the European Union’s
+                  Horizon Europe research and innovation programme under grant
+                  agreement No 101057764 and by the UKRI/HM Government.
+
+                  Other funding includes Research
                   England’s Collaboration Fund, Strategic Priorities Fund and
                   Policy Support Fund, as part of the Policy@Exeter initiative,
                   The Schroder Foundation, and the Net Zero Innovation
@@ -253,12 +300,12 @@ class App extends React.Component {
                   Copyright © 2022 Then Try This and University of Exeter
                 </p>
                 
-                <p>
-                  <a className="email-button" href="mailto:lcat@exeter.ac.uk"/>
-                </p>                
-
                 <div className="logo-block">
                   <img className="logos"/>
+                </div>
+
+                <div className="logo-block">
+                  <img className="funder-logos"/>
                 </div>
 
               </div>

@@ -17,9 +17,39 @@ import { andify, camelize, rcpText, seasonText } from '../utils/utils';
 import './HealthWellbeing.css';
 
 function HealthWellbeing(props) {
-
+    
     const [ healthNodes, setHealthNodes ] = useState([]);
 
+    let supported = [
+        "AdversePregnancyOutcomes",
+        "AllCauseDeaths",
+        "Allergies",
+        "BoneHealth&ImmuneSystemStrength",
+        "CardiovascularDeaths",
+        "CardiovascularDiseases",
+        "CerebrovascularDeaths",
+        "CognitivePerformance&TheAbilityToLearn",
+        "ColdRelatedDeaths",
+        "ColdRelatedMorbidity",
+        "ColdRelatedMortality",
+        "CommunicableDiseases",
+        "Diabetes",
+        "InfectionsCausedByPathogenicOrganisms",
+        "Injuries",
+        "Injury",
+        "LungCancer",
+        "MentalHealthDisorders",
+        "NonCommunicableDiseases",
+        "Obesity",
+        "OpthalmicDiseases",
+        "RespiratoryDeaths",
+        "RespiratoryDiseases",
+        "SkinCancer",
+        "SleepDisruption&Disorders",
+        "Vector-BorneDiseases",
+        "Wellbeing",
+    ];
+    
     useEffect(() => {
         let hw = props.networkParser.calculateHealthWellbeing(
             props.climatePrediction,
@@ -28,7 +58,11 @@ function HealthWellbeing(props) {
         // lazy load the icons here
         setHealthNodes(hw.map(node => {            
             node.direction = lazy(() => import('../images/'+node.state));
-            node.icon = lazy(() => import('../images/health/'+camelize(node.label)));
+            if (!supported.includes(camelize(node.label))) {
+                node.icon = lazy(() => import('../images/health/Injury'));
+            } else {
+                node.icon = lazy(() => import('../images/health/'+camelize(node.label)));
+            }
             return node;
         }));
 
@@ -45,9 +79,17 @@ function HealthWellbeing(props) {
           active={props.loading}
           spinner
           text={'Loading climate data'}>
-
-          <h1>Health Impact Summary</h1>
-
+          
+          <div className={'title'}>              
+            <h1>Health Impact Summary</h1>
+            <div className="dropdown">
+              <span className="caveat">Data quality</span>
+	          <div className="dropdown-content">
+                This data is proof of concept and not reliable
+              </div>
+            </div>
+          </div>
+          
           <p>
             The climate change in&nbsp;
             
@@ -55,7 +97,7 @@ function HealthWellbeing(props) {
               { andify(props.regions.map(e => e.name)) }
             </span>
 
-            &nbsp;under the <b>{rcpText[props.rcp]}</b> when considering <b>{seasonText[props.season]}</b> averages, is expected to result in these health and wellbeing impacts:
+            &nbsp;under the <b>{rcpText[props.rcp]}</b> when considering <b>{seasonText[props.season]}</b> averages, is expected to result in these undesirable health and wellbeing impacts:
           </p>
           
           <div className={"horiz-container-health"}>        
